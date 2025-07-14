@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smart Outdoor Activity Tracker</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
+  <style>
+    #activityCanvas {
+      background-color: #fff;
+      border: 2px solid #007bff;
+      border-radius: 8px;
+      margin-top: 20px;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Smart Outdoor Activity Tracker</h1>
+    <button id="startBtn">Start Tracking</button>
+    <div id="status"></div>
+    <div id="networkStatus"></div>
+
+    <div class="map-wrapper" id="mapWrapper">
+      <div id="map"></div>
+    </div>
+
+    <canvas id="activityCanvas" width="400" height="200"></canvas>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+  <script>
+    let map, marker, watchId;
+    const statusDiv = document.getElementById('status');
+    const networkStatusDiv = document.getElementById('networkStatus');
+    const startBtn = document.getElementById('startBtn');
+    const canvas = document.getElementById('activityCanvas');
+    const ctx = canvas.getContext('2d');
+    let points = [];
+
+    function updateNetworkStatus() {
+      const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+      if (connection) {
+        networkStatusDiv.innerText = `Network: ${connection.effectiveType}`;
+      } else {
+        networkStatusDiv.innerText = 'Network info not supported.';
+      }
+    }
+
+    function initMap(lat, lng) {
+      map = L.map('map').setView([lat, lng], 15);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+      }).addTo(map);
+      marker = L.marker([lat, lng]).addTo(map);
+    }
+
+    function updateCanvas(x, y) {
+      points.push({ x, y });
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.beginPath();
+      if (points.length > 0) {
+        ctx.moveTo(points[0].x, points[0].y);
+        for (let i = 1; i < points.length; i++) {
+          ctx.lineTo(points[i].x, points[i].y);
+        }
+      }
+      ctx.strokeStyle = 'blue';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
+    function normalizeCoords(lat, lng) {
+      const x = ((lng + 180) / 360) * canvas.width;
+      const y = canvas.height - ((lat + 90) / 180) * canvas.height;
+      return { x, y };
+    }
+
+    function handlePosition(position) {
+      const lat = position.coords.latitude;
+      const lng = position.coords.longitude;
+      statusDiv.innerText = `Lat: ${lat.toFixed(4)} | Lng: ${lng.toFixed(4)}`;
+      if (!map) initMap(lat, lng);
+      marker.setLatLng([lat, lng]);
+      map.setView([lat, lng]);
+      const { x, y } = normalizeCoords(lat, lng);
+      updateCanvas(x, y);
+    }
+
+    function startTracking() {
+      if (!navigator.geolocation) {
+        statusDiv.innerText = 'Geolocation not supported.';
+        return;
+      }
+      updateNetworkStatus();
+      watchId = navigator.geolocation.watchPosition(handlePosition, err => {
+        statusDiv.innerText = 'Error getting location';
+      }, {
+        enableHighAccuracy: true
+      });
+    }
+
+    const observer = new IntersectionObserver(entries => {
+      entries.forEach(entry => {
+        if (!entry.isIntersecting && watchId) {
+          navigator.geolocation.clearWatch(watchId);
+          statusDiv.innerText += ' (Paused)';
+        } else if (entry.isIntersecting) {
+          startTracking();
+        }
+      });
+    });
+
+    observer.observe(document.getElementById('mapWrapper'));
+    startBtn.addEventListener('click', startTracking);
+    updateNetworkStatus();
+  </script>
+</body>
+</html>
